@@ -1,0 +1,57 @@
+# Файлы с паролями и конфиденциальные данные
+squid/passwd
+squid-admin/users.json
+*.env
+.env.local
+.env.production
+secrets.ini
+config.ini
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Логи приложения
+*.log
+logs/
+
+# Питоновские файлы
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Виртуальное окружение Python
+venv/
+env/
+ENV/
+my_venv/
+
+# IDE и редакторы кода
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Временные файлы
+tmp/
+temp/
