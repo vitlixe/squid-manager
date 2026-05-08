@@ -104,17 +104,21 @@ def validate_user_payload(data):
         "status": validate_optional_text(data.get("status", "-"), "status") or "-",
     }
 
+_MAX_LOGIN = 64
+_MAX_BASE = _MAX_LOGIN - 4  # reserve 4 chars for collision suffix up to 9999
+
 def generate_login(first_name, last_name, users):
     first_en = normalize_login_part(first_name)
     last_en = normalize_login_part(last_name)
     if not first_en or not last_en:
         raise ValueError("first_name and last_name must contain login-safe characters")
-    base = f"{first_en[0]}.{last_en}"
+    base = f"{first_en[0]}.{last_en}"[:_MAX_BASE]
     login = base
     counter = 1
     existing = {u["login"] for u in users}
     while login in existing:
-        login = f"{base}{counter}"
+        suffix = str(counter)
+        login = f"{base[:_MAX_LOGIN - len(suffix)]}{suffix}"
         counter += 1
     return login
 
@@ -127,9 +131,9 @@ def validate_login(login):
         raise ValueError("invalid login")
     return login
 
-def run_checked(command, safe_command=None):
+def run_checked(command, safe_command=None, stdin_data=None):
     try:
-        return subprocess.run(command, check=True, capture_output=True, text=True)
+        return subprocess.run(command, check=True, capture_output=True, text=True, input=stdin_data)
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         stdout = (exc.stdout or "").strip()
@@ -209,19 +213,37 @@ def reset_password(login):
 @app.route("/api/reload_squid", methods=["POST"])
 @requires_auth
 def reload_squid():
+    tmp_passwd = SQUID_PASSWD + ".new"
     try:
         users = load_users()
-        run_checked(["sudo", "truncate", "-s", "0", SQUID_PASSWD])
-        for u in users:
-            login = validate_login(u["login"])
-            run_checked(
-                ["sudo", "htpasswd", "-b", SQUID_PASSWD, login, u["password"]],
-                safe_command=f"sudo htpasswd -b {SQUID_PASSWD} {login} <password>",
-            )
+        if users:
+            first = True
+            for u in users:
+                login = validate_login(u["login"])
+                if first:
+                    run_checked(
+                        ["sudo", "htpasswd", "-c", "-i", tmp_passwd, login],
+                        safe_command=f"sudo htpasswd -c -i {tmp_passwd} {login}",
+                        stdin_data=u["password"],
+                    )
+                    first = False
+                else:
+                    run_checked(
+                        ["sudo", "htpasswd", "-i", tmp_passwd, login],
+                        safe_command=f"sudo htpasswd -i {tmp_passwd} {login}",
+                        stdin_data=u["password"],
+                    )
+            run_checked(["sudo", "mv", tmp_passwd, SQUID_PASSWD])
+        else:
+            run_checked(["sudo", "truncate", "-s", "0", SQUID_PASSWD])
         run_checked(["sudo", "systemctl", "reload", "squid"])
-        return jsonify({"status":"ok","message":"Squid обновлён"})
+        return jsonify({"status": "ok", "message": "Squid обновлён"})
     except (RuntimeError, ValueError) as exc:
-        return jsonify({"status":"error","error":str(exc)}), 500
+        try:
+            run_checked(["sudo", "rm", "-f", tmp_passwd])
+        except Exception:
+            pass
+        return jsonify({"status": "error", "error": str(exc)}), 500
 
 if __name__ == "__main__":
     app.run(host=APP_HOST, port=APP_PORT)

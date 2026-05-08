@@ -46,8 +46,14 @@ sudo apt install -y squid apache2-utils python3-flask
 ### 2. Install Squid configuration
 
 ```bash
-sudo cp -r <repository>/squid/* /etc/squid/
-sudo chmod 644 /etc/squid/passwd
+sudo cp <repository>/squid/squid.conf /etc/squid/squid.conf
+sudo cp <repository>/squid/whitelist /etc/squid/whitelist
+```
+
+Create an empty password file with correct ownership:
+
+```bash
+sudo install -o root -g proxy -m 640 /dev/null /etc/squid/passwd
 ```
 
 ### 3. Install the admin application
@@ -62,9 +68,7 @@ sudo chmod -R 750 /opt/squid-admin
 ### 4. Configure sudo permissions
 
 The `proxy` user needs permission to update the Squid password file and reload Squid
-without an interactive password prompt.
-
-Open sudoers with:
+without a password prompt.
 
 ```bash
 sudo visudo
@@ -73,10 +77,19 @@ sudo visudo
 Add:
 
 ```text
-proxy ALL=(ALL) NOPASSWD: /usr/bin/truncate -s 0 /etc/squid/passwd
-proxy ALL=(root) NOPASSWD: /usr/bin/htpasswd -b /etc/squid/passwd *
+proxy ALL=(root) NOPASSWD: /usr/bin/htpasswd -c -i /etc/squid/passwd.new *
+proxy ALL=(root) NOPASSWD: /usr/bin/htpasswd -i /etc/squid/passwd.new *
+proxy ALL=(root) NOPASSWD: /bin/mv /etc/squid/passwd.new /etc/squid/passwd
+proxy ALL=(root) NOPASSWD: /usr/bin/rm -f /etc/squid/passwd.new
+proxy ALL=(root) NOPASSWD: /usr/bin/truncate -s 0 /etc/squid/passwd
 proxy ALL=(root) NOPASSWD: /bin/systemctl reload squid
 ```
+
+The reload endpoint writes credentials to `/etc/squid/passwd.new` via `htpasswd -i`
+(password read from stdin, never passed as a command argument), then atomically replaces
+`/etc/squid/passwd` with `mv`. If generation fails partway, `passwd.new` is removed and
+the live `passwd` file is left untouched. The `truncate` rule is used only when the user
+list is empty.
 
 ### 5. Configure environment variables
 
@@ -185,12 +198,14 @@ python3 -m unittest discover squid-admin
 
 ## Security Notes
 
-- Do not use a weak value for `SQUID_ADMIN_PASSWORD`.
-- Keep `/etc/squid-admin.env` readable only by trusted users.
-- Do not expose the Flask development server directly to the public internet.
-- `users.json` contains proxy credentials and must be protected.
-- After changing users in the web interface, reload Squid from the UI so the
-  `/etc/squid/passwd` file is regenerated.
+- Set a strong value for `SQUID_ADMIN_PASSWORD` before deployment. The placeholder
+  `change-this-password` must not be used in production.
+- Keep `/etc/squid-admin.env` readable only by root and the proxy group (`chmod 640`).
+- `users.json` stores proxy credentials in plaintext. Restrict access: `chmod 600`.
+- Do not expose the Flask development server to the public internet. Use a reverse proxy
+  with TLS for any external access.
+- After making changes in the web interface, use the "Reload Squid" button to apply them
+  to `/etc/squid/passwd`.
 
 ## Screenshot
 
