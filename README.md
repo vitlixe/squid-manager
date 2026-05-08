@@ -1,42 +1,73 @@
 # Squid Manager
 
-Squid Manager is a small Flask-based web interface for managing Squid proxy users.
-It lets an administrator add, remove, and reset proxy users, then rebuild the Squid
-password file and reload the service.
+A small Flask web interface for managing Squid proxy users. Supports adding, removing,
+and resetting proxy credentials; rebuilds the Squid password file atomically and reloads
+the service.
 
 ## Project Structure
 
 ```text
 squid-manager/
 ├── deploy/
-│   ├── squid-admin.env.example
-│   └── squid-admin.service
+│   ├── squid-admin.env.example   # Environment template
+│   └── squid-admin.service       # systemd unit
 ├── squid/
-│   ├── squid.conf          # Squid configuration
-│   ├── whitelist           # Allowed domains
-│   └── passwd              # htpasswd file, ignored by git
+│   ├── squid.conf                # Squid configuration
+│   └── whitelist                 # Allowed domains
 ├── squid-admin/
-│   ├── app.py              # Flask backend
-│   ├── requirements.txt    # Python dependencies
-│   ├── static/
-│   │   ├── index.html      # Web UI
-│   │   └── images/
-│   │       └── squid-admin.png
-│   └── users.json          # Local user store, ignored by git
+│   ├── app.py                    # Flask backend
+│   ├── requirements.txt          # Python dependencies
+│   ├── test_app.py               # Unit tests
+│   └── static/
+│       └── index.html            # Web UI
+├── Makefile
 ├── .gitignore
 └── README.md
 ```
 
+Runtime files `squid/passwd` and `squid-admin/users.json` are created on first use
+and are excluded from version control.
+
 ## Requirements
 
-- Linux host with Squid
-- Python 3
-- `apache2-utils` for `htpasswd`
-- `systemd` for service management
+- Linux with Squid installed
+- Python 3.8+
+- `apache2-utils` (provides `htpasswd`)
+- `systemd`
 
-## Installation
+## Local Development
 
-### 1. Install Squid and dependencies
+Install Flask:
+
+```bash
+pip install -r squid-admin/requirements.txt
+```
+
+Run tests:
+
+```bash
+make test
+```
+
+Run tests and check for whitespace issues:
+
+```bash
+make check
+```
+
+Start the development server:
+
+```bash
+make run
+```
+
+The server starts at `http://localhost:5000` with credentials `admin` / `dev`.
+The Squid reload endpoint is not functional in this mode; it requires a configured
+production host with the sudoers rules in place.
+
+## Production Deployment
+
+### 1. Install packages
 
 ```bash
 sudo apt update
@@ -93,15 +124,12 @@ list is empty.
 
 ### 5. Configure environment variables
 
-Squid Manager has no default admin password. Install the example environment
-file, then edit it:
-
 ```bash
 sudo cp <repository>/deploy/squid-admin.env.example /etc/squid-admin.env
 sudo nano /etc/squid-admin.env
 ```
 
-The file contains:
+Set a strong admin password and verify all paths:
 
 ```ini
 SQUID_ADMIN_LOGIN=admin
@@ -119,8 +147,9 @@ sudo chown root:proxy /etc/squid-admin.env
 sudo chmod 640 /etc/squid-admin.env
 ```
 
-By default, the admin interface binds to `127.0.0.1`. For remote access, prefer an
-SSH tunnel, VPN, or reverse proxy with TLS and additional access control.
+By default the admin interface binds to `127.0.0.1`. For remote access, use an SSH tunnel,
+VPN, or a reverse proxy with TLS and access control. Do not expose port 5000 directly to
+the public internet.
 
 ### 6. Configure firewall
 
@@ -128,39 +157,15 @@ SSH tunnel, VPN, or reverse proxy with TLS and additional access control.
 sudo ufw allow 3128/tcp
 ```
 
-Do not expose port `5000/tcp` to the public internet. If direct access is required,
-limit it to a trusted admin IP:
-
-```bash
-sudo ufw allow from <admin_ip> to any port 5000 proto tcp
-```
-
-### 7. Run manually
-
-```bash
-cd /opt/squid-admin
-set -a
-. /etc/squid-admin.env
-set +a
-python3 app.py
-```
-
-The interface will be available at:
-
-```text
-http://localhost:5000
-```
-
-## systemd Service
-
-Install the provided systemd unit:
+### 7. Enable systemd service
 
 ```bash
 sudo cp <repository>/deploy/squid-admin.service /etc/systemd/system/squid-admin.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now squid squid-admin
 ```
 
-The unit runs the app as `proxy`, loads `/etc/squid-admin.env`, and starts
-`/opt/squid-admin/app.py`:
+The unit file:
 
 ```ini
 [Unit]
@@ -179,21 +184,6 @@ RestartSec=5
 
 [Install]
 WantedBy=network.target
-```
-
-Enable and start Squid and Squid Manager:
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now squid squid-admin
-```
-
-## Testing
-
-Install Python dependencies, then run:
-
-```bash
-python3 -m unittest discover squid-admin
 ```
 
 ## Security Notes

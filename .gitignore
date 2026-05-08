@@ -1,5 +1,6 @@
 # Файлы с паролями и конфиденциальные данные
 squid/passwd
+squid/passwd.new
 squid-admin/users.json
 *.env
 .env.local
@@ -40,6 +41,7 @@ wheels/
 MANIFEST
 
 # Виртуальное окружение Python
+.venv/
 venv/
 env/
 ENV/
