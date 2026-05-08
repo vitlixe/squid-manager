@@ -1,84 +1,89 @@
-# 🛡️ Squid Manager
+# Squid Manager
 
-**Squid Manager** — веб-интерфейс на **Flask** для управления пользователями прокси-сервера **Squid**.  
-Позволяет быстро добавлять/удалять пользователей и обновлять конфигурацию через удобный веб-интерфейс.
+Squid Manager is a small Flask-based web interface for managing Squid proxy users.
+It lets an administrator add, remove, and reset proxy users, then rebuild the Squid
+password file and reload the service.
 
----
+## Project Structure
 
-## 📂 Структура проекта
-```
-
+```text
 squid-manager/
-├── squid/                        # Конфигурация Squid
-│   ├── squid.conf                # Основной конфиг
-│   ├── whitelist                 # Белый список доменов
-│   └── passwd                    # Файл с паролями (в .gitignore)
-│
-├── squid-admin/                  # Веб-интерфейс админки
-│   ├── app.py                    # Бэкенд на Flask
-│   ├── requirements.txt          # Зависимости Python
-│   ├── static/                   # Фронтенд
-│   │   ├── index.html
+├── squid/
+│   ├── squid.conf          # Squid configuration
+│   ├── whitelist           # Allowed domains
+│   └── passwd              # htpasswd file, ignored by git
+├── squid-admin/
+│   ├── app.py              # Flask backend
+│   ├── requirements.txt    # Python dependencies
+│   ├── static/
+│   │   ├── index.html      # Web UI
 │   │   └── images/
 │   │       └── squid-admin.png
-│   └── users.json                # Пользователи (в .gitignore)
-│
+│   └── users.json          # Local user store, ignored by git
 ├── .gitignore
 └── README.md
+```
 
-````
+## Requirements
 
----
+- Linux host with Squid
+- Python 3
+- `apache2-utils` for `htpasswd`
+- `systemd` for service management
 
-## ⚡ Установка и запуск
+## Installation
 
-### 1. Установить Squid и зависимости
+### 1. Install Squid and dependencies
+
 ```bash
 sudo apt update
 sudo apt install -y squid apache2-utils python3-flask
-````
+```
 
-### 2. Скопировать конфиги Squid
+### 2. Install Squid configuration
 
 ```bash
-sudo cp -r <репозиторий>/squid/* /etc/squid/
+sudo cp -r <repository>/squid/* /etc/squid/
 sudo chmod 644 /etc/squid/passwd
 ```
 
-### 3. Скопировать админку
+### 3. Install the admin application
 
 ```bash
 sudo mkdir -p /opt/squid-admin
-sudo cp -r <репозиторий>/squid-admin/* /opt/squid-admin/
+sudo cp -r <repository>/squid-admin/* /opt/squid-admin/
 sudo chown -R proxy:proxy /opt/squid-admin
 sudo chmod -R 750 /opt/squid-admin
 ```
 
-### 4. Настройка прав пользователя
+### 4. Configure sudo permissions
 
-Чтобы пользователь `proxy` мог управлять Squid через админку, ему нужно добавить права на выполнение команд от имени root без запроса пароля:
+The `proxy` user needs permission to update the Squid password file and reload Squid
+without an interactive password prompt.
+
+Open sudoers with:
 
 ```bash
 sudo visudo
 ```
 
-Добавьте строки:
+Add:
 
-```
+```text
 proxy ALL=(ALL) NOPASSWD: /usr/bin/truncate -s 0 /etc/squid/passwd
 proxy ALL=(root) NOPASSWD: /usr/bin/htpasswd -b /etc/squid/passwd *
 proxy ALL=(root) NOPASSWD: /bin/systemctl reload squid
 ```
 
-### 5. Настроить переменные окружения админки
+### 5. Configure environment variables
 
-Админка не использует пароль по умолчанию. Создайте файл с локальными настройками:
+Squid Manager has no default admin password. Create an environment file:
 
 ```bash
 sudo nano /etc/squid-admin.env
 ```
 
-Пример:
+Example:
 
 ```ini
 SQUID_ADMIN_LOGIN=admin
@@ -89,25 +94,30 @@ SQUID_ADMIN_USERS_FILE=/opt/squid-admin/users.json
 SQUID_PASSWD=/etc/squid/passwd
 ```
 
-Закройте доступ к файлу:
+Restrict access to the file:
 
 ```bash
 sudo chown root:proxy /etc/squid-admin.env
 sudo chmod 640 /etc/squid-admin.env
 ```
 
-По умолчанию веб-интерфейс слушает только `127.0.0.1`. Для доступа с другой машины используйте SSH tunnel, VPN или reverse proxy с дополнительной авторизацией/TLS.
+By default, the admin interface binds to `127.0.0.1`. For remote access, prefer an
+SSH tunnel, VPN, or reverse proxy with TLS and additional access control.
 
-### 6. Настроить firewall
+### 6. Configure firewall
 
 ```bash
 sudo ufw allow 3128/tcp
-# Не открывайте 5000/tcp во внешний мир без ограничения по IP/VPN.
-# Если прямой доступ всё же нужен:
-# sudo ufw allow from <admin_ip> to any port 5000 proto tcp
 ```
 
-### 7. Запустить вручную (тестовый запуск)
+Do not expose port `5000/tcp` to the public internet. If direct access is required,
+limit it to a trusted admin IP:
+
+```bash
+sudo ufw allow from <admin_ip> to any port 5000 proto tcp
+```
+
+### 7. Run manually
 
 ```bash
 cd /opt/squid-admin
@@ -117,19 +127,21 @@ set +a
 python3 app.py
 ```
 
-Приложение будет доступно 👉 `http://localhost:5000`
+The interface will be available at:
 
----
+```text
+http://localhost:5000
+```
 
-## ⚙️ Автозапуск через systemd
+## systemd Service
 
-### 8. Создание systemd-сервиса
+Create the service file:
 
 ```bash
 sudo nano /etc/systemd/system/squid-admin.service
 ```
 
-Пример конфигурации:
+Example:
 
 ```ini
 [Unit]
@@ -150,15 +162,30 @@ RestartSec=5
 WantedBy=network.target
 ```
 
-### 9. Перезапуск и автозапуск сервисов
+Enable and start Squid and Squid Manager:
 
 ```bash
 sudo systemctl daemon-reload
 sudo systemctl enable --now squid squid-admin
 ```
 
----
+## Testing
 
-## 🖼️ Скриншот интерфейса
+Install Python dependencies, then run:
 
-![Squid Manager Screenshot](./squid-admin/static/images//squid-admin.png)
+```bash
+python3 -m unittest discover squid-admin
+```
+
+## Security Notes
+
+- Do not use a weak value for `SQUID_ADMIN_PASSWORD`.
+- Keep `/etc/squid-admin.env` readable only by trusted users.
+- Do not expose the Flask development server directly to the public internet.
+- `users.json` contains proxy credentials and must be protected.
+- After changing users in the web interface, reload Squid from the UI so the
+  `/etc/squid/passwd` file is regenerated.
+
+## Screenshot
+
+![Squid Manager Screenshot](./squid-admin/static/images/squid-admin.png)
