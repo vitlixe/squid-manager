@@ -70,17 +70,50 @@ proxy ALL=(root) NOPASSWD: /usr/bin/htpasswd -b /etc/squid/passwd *
 proxy ALL=(root) NOPASSWD: /bin/systemctl reload squid
 ```
 
-### 5. Настроить firewall
+### 5. Настроить переменные окружения админки
+
+Админка не использует пароль по умолчанию. Создайте файл с локальными настройками:
+
+```bash
+sudo nano /etc/squid-admin.env
+```
+
+Пример:
+
+```ini
+SQUID_ADMIN_LOGIN=admin
+SQUID_ADMIN_PASSWORD=change-this-password
+SQUID_ADMIN_HOST=127.0.0.1
+SQUID_ADMIN_PORT=5000
+SQUID_ADMIN_USERS_FILE=/opt/squid-admin/users.json
+SQUID_PASSWD=/etc/squid/passwd
+```
+
+Закройте доступ к файлу:
+
+```bash
+sudo chown root:proxy /etc/squid-admin.env
+sudo chmod 640 /etc/squid-admin.env
+```
+
+По умолчанию веб-интерфейс слушает только `127.0.0.1`. Для доступа с другой машины используйте SSH tunnel, VPN или reverse proxy с дополнительной авторизацией/TLS.
+
+### 6. Настроить firewall
 
 ```bash
 sudo ufw allow 3128/tcp
-sudo ufw allow 5000/tcp
+# Не открывайте 5000/tcp во внешний мир без ограничения по IP/VPN.
+# Если прямой доступ всё же нужен:
+# sudo ufw allow from <admin_ip> to any port 5000 proto tcp
 ```
 
-### 6. Запустить вручную (тестовый запуск)
+### 7. Запустить вручную (тестовый запуск)
 
 ```bash
 cd /opt/squid-admin
+set -a
+. /etc/squid-admin.env
+set +a
 python3 app.py
 ```
 
@@ -90,7 +123,7 @@ python3 app.py
 
 ## ⚙️ Автозапуск через systemd
 
-### 7. Создание systemd-сервиса
+### 8. Создание systemd-сервиса
 
 ```bash
 sudo nano /etc/systemd/system/squid-admin.service
@@ -108,6 +141,7 @@ Type=simple
 User=proxy
 Group=proxy
 WorkingDirectory=/opt/squid-admin
+EnvironmentFile=/etc/squid-admin.env
 ExecStart=/usr/bin/python3 /opt/squid-admin/app.py
 Restart=always
 RestartSec=5
@@ -116,7 +150,7 @@ RestartSec=5
 WantedBy=network.target
 ```
 
-### 8. Перезапуск и автозапуск сервисов
+### 9. Перезапуск и автозапуск сервисов
 
 ```bash
 sudo systemctl daemon-reload
