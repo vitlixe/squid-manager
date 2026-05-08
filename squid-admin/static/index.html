@@ -98,8 +98,33 @@ let usersCache = [];
 
 async function loadUsers() {
   let res = await fetch("/api/users");
+  if (!res.ok) {
+    alert("Не удалось загрузить пользователей");
+    return;
+  }
   usersCache = await res.json();
   renderTable(usersCache);
+}
+
+function icon(name) {
+  let i = document.createElement("i");
+  i.className = `bi bi-${name}`;
+  return i;
+}
+
+function textCell(text) {
+  let td = document.createElement("td");
+  td.textContent = text || "-";
+  return td;
+}
+
+function actionButton(className, title, iconName) {
+  let button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.title = title;
+  button.appendChild(icon(iconName));
+  return button;
 }
 
 function renderTable(users) {
@@ -109,58 +134,63 @@ function renderTable(users) {
   users.forEach(u => {
     let fullName = [u.last_name, u.first_name, u.middle_name].filter(Boolean).join(" ");
     let tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${fullName}</td>
-      <td>${u.status || "-"}</td>
-      <td><code>${u.login}</code></td>
-      <td>
-        <span class="password-field" id="pwd-display-${u.login}">${'*'.repeat(u.password.length)}</span>
-        <button class="btn btn-sm btn-outline-info ms-1 toggle-btn"
-                data-login="${u.login}" data-password="${u.password}" data-state="hidden"
-                title="Показать/скрыть пароль"><i class="bi bi-eye"></i></button>
-      </td>
-      <td>
-        <button class="btn btn-sm btn-outline-success me-1"  
-                onclick="copyCredentials('${u.login}', '${u.password}', this)" 
-                title="Копировать логин и пароль"> 
-          <i class="bi bi-clipboard"></i>
-        </button>
-        <button class="btn btn-sm btn-warning me-1 reset-btn"
-                data-login="${u.login}" title="Сбросить пароль">
-          <i class="bi bi-key"></i>
-        </button>
-        <button class="btn btn-sm btn-danger delete-btn"
-                data-login="${u.login}" title="Удалить пользователя">
-          <i class="bi bi-trash"></i>
-        </button>
-      </td>
-    `;
-    tbody.appendChild(tr);
-  });
 
-  tbody.querySelectorAll(".toggle-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      togglePassword(btn.dataset.login, btn.dataset.password, btn);
+    tr.appendChild(textCell(fullName));
+    tr.appendChild(textCell(u.status || "-"));
+
+    let loginCell = document.createElement("td");
+    let loginCode = document.createElement("code");
+    loginCode.textContent = u.login;
+    loginCell.appendChild(loginCode);
+    tr.appendChild(loginCell);
+
+    let passwordCell = document.createElement("td");
+    let passwordDisplay = document.createElement("span");
+    passwordDisplay.className = "password-field";
+    passwordDisplay.textContent = "*".repeat((u.password || "").length);
+    passwordCell.appendChild(passwordDisplay);
+
+    let toggleBtn = actionButton("btn btn-sm btn-outline-info ms-1", "Показать/скрыть пароль", "eye");
+    toggleBtn.dataset.state = "hidden";
+    toggleBtn.addEventListener("click", () => {
+      togglePassword(passwordDisplay, u.password || "", toggleBtn);
     });
-  });
-  tbody.querySelectorAll(".delete-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-      deleteUser(btn.dataset.login);
+    passwordCell.appendChild(toggleBtn);
+    tr.appendChild(passwordCell);
+
+    let actionsCell = document.createElement("td");
+
+    let copyBtn = actionButton("btn btn-sm btn-outline-success me-1", "Копировать логин и пароль", "clipboard");
+    copyBtn.addEventListener("click", () => {
+      copyCredentials(u.login, u.password || "", copyBtn);
     });
-  });
-  tbody.querySelectorAll(".reset-btn").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      if (confirm("Сгенерировать новый пароль для " + btn.dataset.login + "?")) {
-        let res = await fetch("/api/users/" + encodeURIComponent(btn.dataset.login) + "/password", {
+    actionsCell.appendChild(copyBtn);
+
+    let resetBtn = actionButton("btn btn-sm btn-warning me-1", "Сбросить пароль", "key");
+    resetBtn.addEventListener("click", async () => {
+      if (confirm("Сгенерировать новый пароль для " + u.login + "?")) {
+        let res = await fetch("/api/users/" + encodeURIComponent(u.login) + "/password", {
           method: "PUT"
         });
         if (res.ok) {
           let data = await res.json();
           alert(`Новый пароль для ${data.login}: ${data.password}`);
           loadUsers();
+        } else {
+          alert("Не удалось сбросить пароль");
         }
       }
     });
+    actionsCell.appendChild(resetBtn);
+
+    let deleteBtn = actionButton("btn btn-sm btn-danger", "Удалить пользователя", "trash");
+    deleteBtn.addEventListener("click", () => {
+      deleteUser(u.login);
+    });
+    actionsCell.appendChild(deleteBtn);
+
+    tr.appendChild(actionsCell);
+    tbody.appendChild(tr);
   });
 }
 
@@ -186,6 +216,10 @@ async function addUser() {
     body:JSON.stringify(user)
   });
   let newUser = await res.json();
+  if (!res.ok) {
+    alert(newUser.error || "Не удалось добавить пользователя");
+    return;
+  }
   alert(`Пользователь добавлен в таблицу:\nЛогин: ${newUser.login}\nПароль: ${newUser.password}\nСтатус: ${newUser.status}`);
 
   document.getElementById("last_name").value = "";
@@ -198,21 +232,24 @@ async function addUser() {
 
 async function deleteUser(login) {
   if(confirm("Удалить пользователя " + login + "?")) {
-    await fetch("/api/users/" + encodeURIComponent(login), {method:"DELETE"});
+    let res = await fetch("/api/users/" + encodeURIComponent(login), {method:"DELETE"});
+    if (!res.ok) {
+      alert("Не удалось удалить пользователя");
+      return;
+    }
     loadUsers();
   }
 }
 
-function togglePassword(login, realPassword, btn) {
-  const displayElement = document.getElementById(`pwd-display-${login}`);
+function togglePassword(displayElement, realPassword, btn) {
   if (btn.dataset.state === "hidden") {
     displayElement.textContent = realPassword;
-    btn.innerHTML = '<i class="bi bi-eye-slash"></i>';
+    btn.replaceChildren(icon("eye-slash"));
     btn.title = "Скрыть пароль";
     btn.dataset.state = "shown";
   } else {
     displayElement.textContent = '*'.repeat(realPassword.length);
-    btn.innerHTML = '<i class="bi bi-eye"></i>';
+    btn.replaceChildren(icon("eye"));
     btn.title = "Показать пароль";
     btn.dataset.state = "hidden";
   }
@@ -223,9 +260,9 @@ async function copyCredentials(login, password, button) {
     
     try {
         await navigator.clipboard.writeText(text);
-        button.innerHTML = '<i class="bi bi-check"></i>';
+        button.replaceChildren(icon("check"));
         setTimeout(() => {
-            button.innerHTML = '<i class="bi bi-clipboard"></i>';
+            button.replaceChildren(icon("clipboard"));
         }, 1000);
     } catch (err) {
         // Fallback
@@ -235,9 +272,9 @@ async function copyCredentials(login, password, button) {
         textArea.select();
         document.execCommand('copy');
         document.body.removeChild(textArea);
-        button.innerHTML = '<i class="bi bi-check"></i>';
+        button.replaceChildren(icon("check"));
         setTimeout(() => {
-            button.innerHTML = '<i class="bi bi-clipboard"></i>';
+            button.replaceChildren(icon("clipboard"));
         }, 1000);
     }
 }
@@ -249,7 +286,7 @@ async function reloadSquid() {
   if(data.status === "ok") {
     alert(data.message);
   } else {
-    alert("Ошибка при перезагрузке Squid");
+    alert(data.error || "Ошибка при перезагрузке Squid");
   }
 }
 
