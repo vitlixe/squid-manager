@@ -8,6 +8,9 @@ password file and reload the service.
 
 ```text
 squid-manager/
+├── deploy/
+│   ├── squid-admin.env.example
+│   └── squid-admin.service
 ├── squid/
 │   ├── squid.conf          # Squid configuration
 │   ├── whitelist           # Allowed domains
@@ -77,13 +80,15 @@ proxy ALL=(root) NOPASSWD: /bin/systemctl reload squid
 
 ### 5. Configure environment variables
 
-Squid Manager has no default admin password. Create an environment file:
+Squid Manager has no default admin password. Install the example environment
+file, then edit it:
 
 ```bash
+sudo cp <repository>/deploy/squid-admin.env.example /etc/squid-admin.env
 sudo nano /etc/squid-admin.env
 ```
 
-Example:
+The file contains:
 
 ```ini
 SQUID_ADMIN_LOGIN=admin
@@ -135,13 +140,14 @@ http://localhost:5000
 
 ## systemd Service
 
-Create the service file:
+Install the provided systemd unit:
 
 ```bash
-sudo nano /etc/systemd/system/squid-admin.service
+sudo cp <repository>/deploy/squid-admin.service /etc/systemd/system/squid-admin.service
 ```
 
-Example:
+The unit runs the app as `proxy`, loads `/etc/squid-admin.env`, and starts
+`/opt/squid-admin/app.py`:
 
 ```ini
 [Unit]
