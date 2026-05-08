@@ -74,32 +74,30 @@ def normalize_login_part(value):
     value = transliterate(value).lower()
     return re.sub(r"[^a-z0-9]+", "", value)
 
-def validate_name(value, field):
-    if not isinstance(value, str):
-        raise ValueError(f"{field} is required")
+def validate_name(value, missing_msg):
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(missing_msg)
     value = value.strip()
-    if not value:
-        raise ValueError(f"{field} is required")
     if not NAME_RE.fullmatch(value):
-        raise ValueError(f"{field} contains unsupported characters")
+        raise ValueError("Поле содержит недопустимые символы")
     return value
 
 def validate_optional_text(value, field, max_len=80):
     if value is None:
         return ""
     if not isinstance(value, str):
-        raise ValueError(f"{field} must be a string")
+        raise ValueError("Некорректное значение")
     value = value.strip()
     if len(value) > max_len:
-        raise ValueError(f"{field} is too long")
+        raise ValueError("Поле слишком длинное")
     return value
 
 def validate_user_payload(data):
     if not isinstance(data, dict):
-        raise ValueError("JSON body is required")
+        raise ValueError("Некорректный запрос")
     return {
-        "last_name": validate_name(data.get("last_name"), "last_name"),
-        "first_name": validate_name(data.get("first_name"), "first_name"),
+        "last_name": validate_name(data.get("last_name"), "Введите фамилию"),
+        "first_name": validate_name(data.get("first_name"), "Введите имя"),
         "middle_name": validate_optional_text(data.get("middle_name", ""), "middle_name"),
         "status": validate_optional_text(data.get("status", "-"), "status") or "-",
     }

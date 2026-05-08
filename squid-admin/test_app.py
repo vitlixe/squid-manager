@@ -51,7 +51,25 @@ class SquidAdminTestCase(unittest.TestCase):
             json={"first_name": "", "last_name": "Иванов"},
         )
         self.assertEqual(res.status_code, 400)
-        self.assertIn("first_name", res.get_json()["error"])
+        self.assertIn("Введите имя", res.get_json()["error"])
+
+    def test_add_user_validates_unsupported_chars(self):
+        res = self.client.post(
+            "/api/users",
+            headers=auth_header(),
+            json={"first_name": "Ivan<script>", "last_name": "Иванов"},
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("недопустимые символы", res.get_json()["error"])
+
+    def test_add_user_validates_last_name_required(self):
+        res = self.client.post(
+            "/api/users",
+            headers=auth_header(),
+            json={"first_name": "Иван", "last_name": ""},
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("Введите фамилию", res.get_json()["error"])
 
     def test_add_user_generates_transliterated_login(self):
         res = self.client.post(

@@ -41,6 +41,7 @@
           <button class="btn btn-success w-100" onclick="addUser()">
             <i class="bi bi-plus-circle"></i> Добавить
           </button>
+          <div id="add-user-error" class="alert alert-danger d-none mt-2 mb-0" role="alert"></div>
         </div>
       </div>
       <button class="btn btn-warning w-100" onclick="reloadSquid()">
@@ -53,7 +54,7 @@
         <div class="card-body">
           <ul>
             <li><strong>Добавить пользователя:</strong> Заполните форму (Фамилия, Имя, Отчество, Статус) и нажмите <em>Добавить</em>. После создания появятся логин и пароль.</li>
-            <li><strong>Поиск:</strong> Используйте поле поиска сверху для фильтрации по ФИО или логину.</li>    
+            <li><strong>Поиск:</strong> Используйте поле поиска сверху для фильтрации по ФИО или логину.</li>
             <li><strong>Показать/скрыть пароль:</strong> Кнопка с <i class="bi bi-eye"></i> переключает отображение пароля.</li>
             <li><strong>Копировать логин и пароль</strong> Кнопка с <i class="bi bi-clipboard"></i> скопирует логин и пароль пользователя в буфер обмена.</li>
             <li><strong>Сброс пароля:</strong> Кнопка <i class="bi bi-key"></i> генерирует новый пароль и показывает его во всплывающем окне.</li>
@@ -204,6 +205,10 @@ function filterTable() {
 }
 
 async function addUser() {
+  const errorEl = document.getElementById("add-user-error");
+  errorEl.classList.add("d-none");
+  errorEl.textContent = "";
+
   let user = {
     last_name: document.getElementById("last_name").value.trim(),
     first_name: document.getElementById("first_name").value.trim(),
@@ -217,10 +222,12 @@ async function addUser() {
   });
   let newUser = await res.json();
   if (!res.ok) {
-    alert(newUser.error || "Не удалось добавить пользователя");
+    errorEl.textContent = newUser.error || "Не удалось добавить пользователя";
+    errorEl.classList.remove("d-none");
     return;
   }
-  alert(`Пользователь добавлен в таблицу:\nЛогин: ${newUser.login}\nПароль: ${newUser.password}\nСтатус: ${newUser.status}`);
+  const fullName = [newUser.last_name, newUser.first_name, newUser.middle_name].filter(Boolean).join(" ");
+  alert(`Пользователь добавлен в таблицу:\nФИО: ${fullName}\nЛогин: ${newUser.login}\nПароль: ${newUser.password}\nСтатус: ${newUser.status}`);
 
   document.getElementById("last_name").value = "";
   document.getElementById("first_name").value = "";
@@ -257,7 +264,6 @@ function togglePassword(displayElement, realPassword, btn) {
 
 async function copyCredentials(login, password, button) {
     const text = `Ваш логин: ${login}\nВаш пароль: ${password}`;
-    
     try {
         await navigator.clipboard.writeText(text);
         button.replaceChildren(icon("check"));
