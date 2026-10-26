@@ -100,6 +100,9 @@
 
 <script>
 let usersCache = [];
+// Hidden passwords show a fixed-length mask, so their length is not revealed
+// and the column stays narrow.
+const PASSWORD_MASK = "********";
 // The panel rejects changing requests without this header (CSRF protection).
 const CSRF_HEADERS = {"X-Requested-With": "squid-manager"};
 
@@ -161,9 +164,10 @@ function renderTable(users) {
     tr.appendChild(loginCell);
 
     let passwordCell = document.createElement("td");
+    passwordCell.className = "text-nowrap";
     let passwordDisplay = document.createElement("span");
     passwordDisplay.className = "password-field";
-    passwordDisplay.textContent = "*".repeat((u.password || "").length);
+    passwordDisplay.textContent = PASSWORD_MASK;
     passwordCell.appendChild(passwordDisplay);
 
     let toggleBtn = actionButton("btn btn-sm btn-outline-info ms-1", "Show/hide password", "eye");
@@ -175,6 +179,7 @@ function renderTable(users) {
     tr.appendChild(passwordCell);
 
     let actionsCell = document.createElement("td");
+    actionsCell.className = "text-nowrap";
 
     let copyBtn = actionButton("btn btn-sm btn-outline-success me-1", "Copy login and password", "clipboard");
     copyBtn.addEventListener("click", () => {
@@ -271,7 +276,7 @@ function togglePassword(displayElement, realPassword, btn) {
     btn.title = "Hide password";
     btn.dataset.state = "shown";
   } else {
-    displayElement.textContent = '*'.repeat(realPassword.length);
+    displayElement.textContent = PASSWORD_MASK;
     btn.replaceChildren(icon("eye"));
     btn.title = "Show password";
     btn.dataset.state = "hidden";
