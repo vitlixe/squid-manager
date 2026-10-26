@@ -1,0 +1,59 @@
+# Debian package definition, built by nfpm in CI:
+#   VERSION="$(cat VERSION)" nfpm package --packager deb --target dist/squid-manager.deb
+name: squid-manager
+version: ${VERSION}
+arch: all
+platform: linux
+section: net
+priority: optional
+maintainer: vitlixe <144495416+vitlixe@users.noreply.github.com>
+description: Web panel for managing Squid proxy users.
+homepage: https://github.com/vitlixe/squid-manager
+license: MIT
+
+depends:
+  - squid
+  - apache2-utils
+  - python3
+  - python3-flask
+  - gunicorn
+  - sudo
+  # squid.service reloads with /bin/kill, which minimal Debian installs lack.
+  - procps
+
+contents:
+  - src: panel/app.py
+    dst: /opt/squid-manager/app.py
+    file_info:
+      mode: 0644
+  - src: panel/static/
+    dst: /opt/squid-manager/static
+    type: tree
+  - src: VERSION
+    dst: /opt/squid-manager/VERSION
+    file_info:
+      mode: 0644
+  - src: packaging/setup.sh
+    dst: /usr/lib/squid-manager/setup.sh
+    file_info:
+      mode: 0755
+  - src: packaging/squid-manager.env.example
+    dst: /usr/lib/squid-manager/squid-manager.env.example
+  - src: config/squid-manager.conf
+    dst: /usr/lib/squid-manager/squid-manager.conf
+  - src: packaging/squid-manager.service
+    dst: /usr/lib/systemd/system/squid-manager.service
+  # Debian Policy 12.5: every package ships its license here.
+  - src: packaging/copyright
+    dst: /usr/share/doc/squid-manager/copyright
+    file_info:
+      mode: 0644
+  # A conffile: dpkg keeps local edits on upgrades.
+  - src: config/whitelist
+    dst: /etc/squid-manager/whitelist
+    type: config
+
+scripts:
+  postinstall: packaging/deb/postinst
+  preremove: packaging/deb/prerm
+  postremove: packaging/deb/postrm

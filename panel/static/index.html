@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Squid Manager</title>
+  <link href="/static/vendor/bootstrap/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/vendor/bootstrap-icons/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background-color: #f8f9fa; }
+    .navbar { margin-bottom: 20px; }
+    .card { box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .table th, .table td { vertical-align: middle; }
+    .password-field { font-family: monospace; letter-spacing: 2px; }
+  </style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-dark">
+  <div class="container-fluid">
+    <span class="navbar-brand mb-0 h1"><i class="bi bi-shield-lock"></i> Squid Manager</span>
+    <span id="version" class="navbar-text small"></span>
+  </div>
+</nav>
+
+<div class="container">
+  <div class="row">
+    <div class="col-md-5">
+      <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+          <i class="bi bi-person-plus"></i> Add user
+        </div>
+        <div class="card-body">
+          <div class="mb-3"><input id="last_name" class="form-control" placeholder="Last name"></div>
+          <div class="mb-3"><input id="first_name" class="form-control" placeholder="First name"></div>
+          <div class="mb-3"><input id="middle_name" class="form-control" placeholder="Middle name"></div>
+          <div class="mb-3">
+            <select id="status" class="form-select">
+              <option value="-" selected>-</option>
+              <option value="Student">Student</option>
+              <option value="Teacher">Teacher</option>
+            </select>
+          </div>
+          <button class="btn btn-success w-100" onclick="addUser()">
+            <i class="bi bi-plus-circle"></i> Add
+          </button>
+          <div id="add-user-error" class="alert alert-danger d-none mt-2 mb-0" role="alert"></div>
+        </div>
+      </div>
+      <button class="btn btn-warning w-100" onclick="reloadSquid()">
+        <i class="bi bi-arrow-repeat"></i> Reload Squid
+      </button>
+      <div id="pending-changes" class="alert alert-warning d-none mt-2 mb-0 py-2 small" role="status">
+        <i class="bi bi-exclamation-triangle"></i> Changes are not applied to Squid yet. Click <em>Reload Squid</em>.
+      </div>
+      <div class="card mt-4">
+        <div class="card-header">
+          <strong>How to use</strong>
+        </div>
+        <div class="card-body">
+          <ul>
+            <li><strong>Add user:</strong> Fill in the form (last name, first name, middle name, status) and click <em>Add</em>. The new login and password are shown after creation.</li>
+            <li><strong>Search:</strong> Use the search field above the list to filter by name or login.</li>
+            <li><strong>Show/hide password:</strong> The <i class="bi bi-eye"></i> button toggles the password.</li>
+            <li><strong>Copy credentials:</strong> The <i class="bi bi-clipboard"></i> button copies the login and password to the clipboard.</li>
+            <li><strong>Reset password:</strong> The <i class="bi bi-key"></i> button generates a new password and shows it in a popup.</li>
+            <li><strong>Delete user:</strong> The <i class="bi bi-trash"></i> button deletes the user after confirmation.</li>
+          </ul>
+        <div class="alert alert-danger mt-3" role="alert">
+          <strong>Important!</strong> After <u>all</u> changes, click
+          <em>Reload Squid</em> to apply them.
+        </div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-7">
+      <div class="card mb-4">
+        <div class="card-header bg-secondary text-white">
+          <i class="bi bi-people"></i> Users
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <input id="search" class="form-control" placeholder="Search by name or login" oninput="filterTable()">
+          </div>
+          <table class="table table-hover" id="usersTable">
+            <thead class="table-light">
+              <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Login</th>
+                <th>Password</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let usersCache = [];
+// The panel rejects changing requests without this header (CSRF protection).
+const CSRF_HEADERS = {"X-Requested-With": "squid-manager"};
+
+async function loadUsers() {
+  let res = await fetch("/api/users");
+  if (!res.ok) {
+    alert("Failed to load users");
+    return;
+  }
+  usersCache = await res.json();
+  renderTable(usersCache);
+  loadStatus();
+}
+
+async function loadStatus() {
+  let res = await fetch("/api/status");
+  if (!res.ok) return;
+  let status = await res.json();
+  document.getElementById("version").textContent = "v" + status.version;
+  document.getElementById("pending-changes").classList.toggle("d-none", !status.pending_changes);
+}
+
+function icon(name) {
+  let i = document.createElement("i");
+  i.className = `bi bi-${name}`;
+  return i;
+}
+
+function textCell(text) {
+  let td = document.createElement("td");
+  td.textContent = text || "-";
+  return td;
+}
+
+function actionButton(className, title, iconName) {
+  let button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.title = title;
+  button.appendChild(icon(iconName));
+  return button;
+}
+
+function renderTable(users) {
+  let tbody = document.querySelector("#usersTable tbody");
+  tbody.innerHTML = "";
+
+  users.forEach(u => {
+    let fullName = [u.last_name, u.first_name, u.middle_name].filter(Boolean).join(" ");
+    let tr = document.createElement("tr");
+
+    tr.appendChild(textCell(fullName));
+    tr.appendChild(textCell(u.status || "-"));
+
+    let loginCell = document.createElement("td");
+    let loginCode = document.createElement("code");
+    loginCode.textContent = u.login;
+    loginCell.appendChild(loginCode);
+    tr.appendChild(loginCell);
+
+    let passwordCell = document.createElement("td");
+    let passwordDisplay = document.createElement("span");
+    passwordDisplay.className = "password-field";
+    passwordDisplay.textContent = "*".repeat((u.password || "").length);
+    passwordCell.appendChild(passwordDisplay);
+
+    let toggleBtn = actionButton("btn btn-sm btn-outline-info ms-1", "Show/hide password", "eye");
+    toggleBtn.dataset.state = "hidden";
+    toggleBtn.addEventListener("click", () => {
+      togglePassword(passwordDisplay, u.password || "", toggleBtn);
+    });
+    passwordCell.appendChild(toggleBtn);
+    tr.appendChild(passwordCell);
+
+    let actionsCell = document.createElement("td");
+
+    let copyBtn = actionButton("btn btn-sm btn-outline-success me-1", "Copy login and password", "clipboard");
+    copyBtn.addEventListener("click", () => {
+      copyCredentials(u.login, u.password || "", copyBtn);
+    });
+    actionsCell.appendChild(copyBtn);
+
+    let resetBtn = actionButton("btn btn-sm btn-warning me-1", "Reset password", "key");
+    resetBtn.addEventListener("click", async () => {
+      if (confirm("Generate a new password for " + u.login + "?")) {
+        let res = await fetch("/api/users/" + encodeURIComponent(u.login) + "/password", {
+          method: "PUT",
+          headers: CSRF_HEADERS
+        });
+        if (res.ok) {
+          let data = await res.json();
+          alert(`New password for ${data.login}: ${data.password}`);
+          loadUsers();
+        } else {
+          alert("Failed to reset password");
+        }
+      }
+    });
+    actionsCell.appendChild(resetBtn);
+
+    let deleteBtn = actionButton("btn btn-sm btn-danger", "Delete user", "trash");
+    deleteBtn.addEventListener("click", () => {
+      deleteUser(u.login);
+    });
+    actionsCell.appendChild(deleteBtn);
+
+    tr.appendChild(actionsCell);
+    tbody.appendChild(tr);
+  });
+}
+
+function filterTable() {
+  let query = document.getElementById("search").value.toLowerCase();
+  let filtered = usersCache.filter(u => {
+    let fullName = [u.last_name, u.first_name, u.middle_name].filter(Boolean).join(" ");
+    return (fullName + " " + u.login + " " + (u.status || "-")).toLowerCase().includes(query);
+  });
+  renderTable(filtered);
+}
+
+async function addUser() {
+  const errorEl = document.getElementById("add-user-error");
+  errorEl.classList.add("d-none");
+  errorEl.textContent = "";
+
+  let user = {
+    last_name: document.getElementById("last_name").value.trim(),
+    first_name: document.getElementById("first_name").value.trim(),
+    middle_name: document.getElementById("middle_name").value.trim(),
+    status: document.getElementById("status").value
+  };
+  let res = await fetch("/api/users", {
+    method:"POST",
+    headers:{"Content-Type":"application/json", ...CSRF_HEADERS},
+    body:JSON.stringify(user)
+  });
+  let newUser = await res.json();
+  if (!res.ok) {
+    errorEl.textContent = newUser.error || "Failed to add user";
+    errorEl.classList.remove("d-none");
+    return;
+  }
+  const fullName = [newUser.last_name, newUser.first_name, newUser.middle_name].filter(Boolean).join(" ");
+  alert(`User added:\nName: ${fullName}\nLogin: ${newUser.login}\nPassword: ${newUser.password}\nStatus: ${newUser.status}`);
+
+  document.getElementById("last_name").value = "";
+  document.getElementById("first_name").value = "";
+  document.getElementById("middle_name").value = "";
+  document.getElementById("status").value = "-";
+
+  loadUsers();
+}
+
+async function deleteUser(login) {
+  if(confirm("Delete user " + login + "?")) {
+    let res = await fetch("/api/users/" + encodeURIComponent(login), {method:"DELETE", headers: CSRF_HEADERS});
+    if (!res.ok) {
+      alert("Failed to delete user");
+      return;
+    }
+    loadUsers();
+  }
+}
+
+function togglePassword(displayElement, realPassword, btn) {
+  if (btn.dataset.state === "hidden") {
+    displayElement.textContent = realPassword;
+    btn.replaceChildren(icon("eye-slash"));
+    btn.title = "Hide password";
+    btn.dataset.state = "shown";
+  } else {
+    displayElement.textContent = '*'.repeat(realPassword.length);
+    btn.replaceChildren(icon("eye"));
+    btn.title = "Show password";
+    btn.dataset.state = "hidden";
+  }
+}
+
+async function copyCredentials(login, password, button) {
+    const text = `Login: ${login}\nPassword: ${password}`;
+    try {
+        await navigator.clipboard.writeText(text);
+        button.replaceChildren(icon("check"));
+        setTimeout(() => {
+            button.replaceChildren(icon("clipboard"));
+        }, 1000);
+    } catch (err) {
+        // Fallback
+        const textArea = document.createElement('textarea');
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textArea);
+        button.replaceChildren(icon("check"));
+        setTimeout(() => {
+            button.replaceChildren(icon("clipboard"));
+        }, 1000);
+    }
+}
+
+async function reloadSquid() {
+  if(!confirm("Write all users to Squid and reload the service?")) return;
+  let res = await fetch("/api/reload_squid", {method: "POST", headers: CSRF_HEADERS});
+  let data = await res.json();
+  if(data.status === "ok") {
+    alert(data.message);
+  } else {
+    alert(data.error || "Failed to reload Squid");
+  }
+  loadStatus();
+}
+
+loadUsers();
+</script>
+</body>
+</html>

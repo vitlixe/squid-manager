@@ -1,0 +1,29 @@
+[Unit]
+Description=Squid Manager panel
+After=network.target squid.service
+
+[Service]
+Type=simple
+User=proxy
+Group=proxy
+WorkingDirectory=/opt/squid-manager
+EnvironmentFile=/etc/squid-manager/squid-manager.env
+ExecStart=/usr/bin/gunicorn --workers 2 --bind ${SQUID_MANAGER_HOST}:${SQUID_MANAGER_PORT} app:app
+Restart=always
+RestartSec=5
+UMask=0077
+
+# Sandboxing limited to mount-namespace options. The panel runs sudo to rebuild
+# /etc/squid/passwd and reload Squid, so NoNewPrivileges must stay off. With
+# User= set, older systemd (249, Ubuntu 22.04) implies NoNewPrivileges for
+# seccomp-based options such as PrivateDevices, ProtectKernel*, ProtectClock,
+# RestrictNamespaces, RestrictAddressFamilies, LockPersonality, and
+# SystemCallArchitectures, which breaks sudo; ProtectSystem=full/strict would
+# make /etc read-only for sudo as well.
+ProtectSystem=true
+ProtectHome=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+
+[Install]
+WantedBy=multi-user.target

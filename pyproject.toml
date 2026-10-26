@@ -1,0 +1,26 @@
+[dependency-groups]
+dev = [
+  "flask>=2.2",
+  "ruff==0.6.9",
+  "mypy==1.11.2",
+  "pytest==8.3.3",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py38"
+src = ["panel", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
+
+[tool.mypy]
+files = ["panel", "tests"]
+mypy_path = "panel"
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["panel"]

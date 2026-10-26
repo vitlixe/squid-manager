@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  NFPM_VERSION: "2.47.0"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --group dev
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - run: pytest
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nfpm
+        run: |
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
+            | sudo tar -xz -C /usr/local/bin nfpm
+      # Asset names stay the same in every release so that
+      # releases/latest/download/<name> always points to the newest one.
+      - name: Build release files
+        run: |
+          mkdir -p dist/squid-manager
+          cp -r VERSION LICENSE install.sh README.md packaging config panel dist/squid-manager/
+          tar -czf dist/squid-manager.tar.gz -C dist squid-manager
+          rm -rf dist/squid-manager
+          VERSION="$(cat VERSION)" nfpm package --packager deb --target dist/squid-manager.deb
+          cd dist && sha256sum squid-manager.tar.gz squid-manager.deb > checksums.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  install-test:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+        method: [deb, tar]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Verify checksums
+        run: cd dist && sha256sum -c checksums.sha256
+      - name: Install from .deb
+        if: matrix.method == 'deb'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ./dist/squid-manager.deb
+      - name: Install from .tar.gz
+        if: matrix.method == 'tar'
+        run: |
+          tar -xzf dist/squid-manager.tar.gz
+          sudo ./squid-manager/install.sh
+      - name: Smoke test
+        run: sudo bash tests/smoke.sh
+      - name: Reinstall keeps users
+        run: |
+          before="$(sudo cat /opt/squid-manager/users.json)"
+          if [ "${{ matrix.method }}" = deb ]; then
+            sudo apt-get install -y --reinstall ./dist/squid-manager.deb
+          else
+            sudo ./squid-manager/install.sh
+          fi
+          [ "$(sudo cat /opt/squid-manager/users.json)" = "${before}" ]
+          sudo bash tests/smoke.sh
+      - name: Service logs
+        if: failure()
+        run: sudo journalctl -u squid -u squid-manager --no-pager -n 200
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [check, install-test]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check tag matches VERSION
+        run: |
+          version="$(cat VERSION)"
+          if [ "v${version}" != "${GITHUB_REF_NAME}" ]; then
+            echo "::error::Tag ${GITHUB_REF_NAME} does not match version ${version} in VERSION"
+            exit 1
+          fi
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/squid-manager.tar.gz dist/squid-manager.deb dist/checksums.sha256 \
+            --title "${GITHUB_REF_NAME}" --generate-notes
